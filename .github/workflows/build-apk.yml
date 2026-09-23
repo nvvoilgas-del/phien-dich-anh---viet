@@ -20,20 +20,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Cài thư viện hệ thống
+      - name: Cai thu vien he thong
         run: |
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake \
             libffi-dev libssl-dev build-essential ccache \
-             libltdl-dev automake gettext
+            libltdl-dev automake gettext
 
-      - name: Cài Buildozer
+      - name: Cai Buildozer
         run: |
           pip install --upgrade pip
           pip install buildozer "cython<3.1" virtualenv
 
-      - name: Cache Buildozer (SDK/NDK)
+      - name: Cache Buildozer
         uses: actions/cache@v4
         with:
           path: |
@@ -42,27 +42,26 @@ jobs:
           key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK
-           run: |
-             yes | buildozer -v android debug 2>&1 | tee build.log
-             exit ${PIPESTATUS[1]}
+        run: |
+          yes | buildozer -v android debug 2>&1 | tee build.log
+          exit ${PIPESTATUS[1]}
 
-         - name: TOM TAT LOI (copy phan nay gui lai)
-           if: failure()
-           run: |
-             echo "=========== CAC DONG CO CHU ERROR ==========="
-             grep -n -iE "error:|error |failed|exception|traceback|No such file|not found" build.log \
-               | grep -v -- "-Werror" | tail -40 || true
-             echo "=========== 60 DONG CUOI ==========="
-             tail -60 build.log | cut -c1-400
+      - name: TOM TAT LOI
+        if: failure()
+        run: |
+          echo "=========== CAC DONG CO CHU ERROR ==========="
+          grep -n -iE "error:|error |failed|exception|traceback" build.log | tail -40 || true
+          echo "=========== 60 DONG CUOI ==========="
+          tail -60 build.log | cut -c1-400
 
-         - name: Tai log day du
-           if: failure()
-           uses: actions/upload-artifact@v4
-           with:
-             name: build-log
-             path: build.log
+      - name: Tai log day du
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
-      - name: Tải APK lên
+      - name: Tai APK len
         uses: actions/upload-artifact@v4
         with:
           name: phien-dich-anh-viet-apk
