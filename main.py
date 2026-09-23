@@ -98,12 +98,14 @@ KV = """
     Label:
         id: status
         size_hint_y: None
-        height: dp(22)
-        font_size: '13sp'
+        height: dp(40)
+        font_size: '12sp'
         color: 0.65, 0.7, 0.78, 1
         text: app.status
         text_size: self.size
         halign: 'left'
+        valign: 'top'
+        shorten: False
 
     # ---- Khu vực trực tiếp ----
     BoxLayout:
@@ -305,10 +307,28 @@ class TranslatorApp(App):
             self.status = f"Đã lưu - dịch bằng {mode}"
             pop.dismiss()
 
+        def check(btn):
+            btn.text = "Đang kiểm tra..."
+            t = Translator(ti.text)
+
+            def work():
+                report = t.diagnose()
+                self._show_report(report)
+                Clock.schedule_once(lambda dt: setattr(btn, "text", "Kiểm tra kết nối"), 0)
+            threading.Thread(target=work, daemon=True).start()
+
         row.add_widget(Button(text="Huỷ", on_release=lambda *_: pop.dismiss()))
+        row.add_widget(Button(text="Kiểm tra kết nối", on_release=check))
         row.add_widget(Button(text="Lưu", on_release=save))
         box.add_widget(row)
         pop.open()
+
+    @mainthread
+    def _show_report(self, report):
+        lbl = Label(text=report, halign="left", valign="top", font_size="14sp")
+        lbl.bind(size=lambda w, v: setattr(w, "text_size", v))
+        Popup(title="Ket qua kiem tra", content=lbl,
+              size_hint=(0.95, 0.6)).open()
 
     # ------------------------------------------------------------ nghe nói
     def toggle_listen(self, lang):
@@ -369,18 +389,22 @@ class TranslatorApp(App):
         rid = self._req_id
 
         def work():
+            err = None
             try:
                 out = self.translator.translate(text, src, LANG[src]["other"])
-            except TranslateError:
-                out = None
-            self._partial_done(rid, out)
+            except Exception as e:
+                out, err = None, str(e)
+            self._partial_done(rid, out, err)
         threading.Thread(target=work, daemon=True).start()
 
     @mainthread
-    def _partial_done(self, rid, out):
+    def _partial_done(self, rid, out, err=None):
         self._partial_busy = False
-        if rid == self._req_id and out:
-            self.live_dst = out
+        if rid == self._req_id:
+            if out:
+                self.live_dst = out
+            elif err:
+                self.status = f"Lỗi dịch: {err}"
         self._pump_partial()
 
     def on_final(self, text):
@@ -420,8 +444,8 @@ class TranslatorApp(App):
         def work():
             try:
                 out, err = self.translator.translate(text, src, dst), None
-            except TranslateError as e:
-                out, err = None, str(e)
+            except Exception as e:
+                out, err = None, f"{type(e).__name__}: {e}"
             self._final_done(rid, text, out, err, src, dst, from_voice)
         threading.Thread(target=work, daemon=True).start()
 
@@ -429,6 +453,7 @@ class TranslatorApp(App):
     def _final_done(self, rid, text, out, err, src, dst, from_voice):
         spoke = False
         if err:
+            self.live_dst = "(khong dich duoc - xem dong chu phia tren)"
             self.status = f"Lỗi dịch: {err}"
         else:
             self.live_dst = out
@@ -480,7 +505,7 @@ class TranslatorApp(App):
         def work():
             try:
                 out = self.translator.translate(text, src, LANG[src]["other"])
-            except TranslateError as e:
+            except Exception as e:
                 out = f"(lỗi: {e})"
             self._text_done(rid, text, out)
         threading.Thread(target=work, daemon=True).start()
