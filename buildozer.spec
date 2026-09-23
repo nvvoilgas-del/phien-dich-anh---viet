@@ -5,7 +5,7 @@ package.domain = org.viet
 source.dir = .
 source.include_exts = py,png,jpg,kv,json,pem
 source.exclude_dirs = bin,.buildozer,.github
-version = 1.0.2
+version = 1.0.3
 
 requirements = python3,kivy,pyjnius,android,openssl,certifi
 

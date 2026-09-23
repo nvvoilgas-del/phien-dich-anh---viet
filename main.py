@@ -316,9 +316,10 @@ class TranslatorApp(App):
         te = TextInput(text=self.translator.email, multiline=False,
                        size_hint_y=None, height=dp(44))
         box.add_widget(te)
-        row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        row1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        row2 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
         pop = Popup(title="Cài đặt", content=box, size_hint=(0.95, None),
-                    height=dp(330))
+                    height=dp(390))
 
         def save(*_):
             self.translator = Translator(ti.text, te.text)
@@ -327,28 +328,32 @@ class TranslatorApp(App):
             self.status = f"Đã lưu - dịch bằng {mode}"
             pop.dismiss()
 
-        def check(btn):
+        def check_net(btn):
             btn.text = "Đang kiểm tra..."
             t = Translator(ti.text, te.text)
 
             def work():
                 report = t.diagnose()
-                self._show_report(report)
-                Clock.schedule_once(lambda dt: setattr(btn, "text", "Kiểm tra kết nối"), 0)
+                self._show_report("Ket qua dich", report)
+                Clock.schedule_once(lambda dt: setattr(btn, "text", "Kiểm tra dịch"), 0)
             threading.Thread(target=work, daemon=True).start()
 
-        row.add_widget(Button(text="Huỷ", on_release=lambda *_: pop.dismiss()))
-        row.add_widget(Button(text="Kiểm tra kết nối", on_release=check))
-        row.add_widget(Button(text="Lưu", on_release=save))
-        box.add_widget(row)
+        def check_tts(btn):
+            self._show_report("Ket qua giong doc", self.tts.report())
+
+        row1.add_widget(Button(text="Kiểm tra dịch", on_release=check_net))
+        row1.add_widget(Button(text="Kiểm tra giọng đọc", on_release=check_tts))
+        row2.add_widget(Button(text="Huỷ", on_release=lambda *_: pop.dismiss()))
+        row2.add_widget(Button(text="Lưu", on_release=save))
+        box.add_widget(row1)
+        box.add_widget(row2)
         pop.open()
 
     @mainthread
-    def _show_report(self, report):
+    def _show_report(self, title, report):
         lbl = Label(text=report, halign="left", valign="top", font_size="14sp")
         lbl.bind(size=lambda w, v: setattr(w, "text_size", v))
-        Popup(title="Ket qua kiem tra", content=lbl,
-              size_hint=(0.95, 0.6)).open()
+        Popup(title=title, content=lbl, size_hint=(0.95, 0.6)).open()
 
     # ------------------------------------------------------------ nghe nói
     def toggle_listen(self, lang):
@@ -488,7 +493,8 @@ class TranslatorApp(App):
             self.status = ("Đang nghe..." if self.listening_lang else "Xong") + f" ({src_name})"
             spoke = self.speak_enabled and self.tts.speak(out, dst)
             if self.speak_enabled and not spoke and IS_ANDROID:
-                self.status = f"Chưa có giọng đọc {LANG[dst]['name']} (xem hướng dẫn)"
+                self.status = ("Không đọc được: " + (self.tts.last_error or
+                               f"chưa có giọng {LANG[dst]['name']}"))
         if from_voice and self.listening_lang and self.continuous:
             # TTS khởi động bất đồng bộ -> chờ lâu hơn một chút nếu vừa đọc
             self._restart_later(0.9 if spoke else 0.2)
