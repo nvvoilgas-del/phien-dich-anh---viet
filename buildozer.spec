@@ -7,20 +7,21 @@ source.include_exts = py,png,jpg,kv,json
 source.exclude_dirs = bin,.buildozer,.github
 version = 1.0.0
 
-requirements = python3,kivy==2.3.1,pyjnius,android,certifi
+requirements = python3,kivy,pyjnius,android,certifi
 
 orientation = portrait
 fullscreen = 0
 
-# ---- Android ----
 android.permissions = INTERNET,RECORD_AUDIO
-android.api = 34
+android.api = 33
 android.minapi = 24
+android.ndk = 25b
 android.archs = arm64-v8a
 android.accept_sdk_license = True
-# Khai báo <queries> để Android 11+ cho phép thấy dịch vụ nhận dạng giọng nói & TTS
 android.extra_manifest_xml = ./extra_manifest.xml
 android.allow_backup = True
+
+p4a.branch = v2024.01.21
 
 [buildozer]
 log_level = 2
