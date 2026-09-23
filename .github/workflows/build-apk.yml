@@ -41,7 +41,25 @@ jobs:
           key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK
-        run: yes | buildozer -v android debug
+           run: |
+             yes | buildozer -v android debug 2>&1 | tee build.log
+             exit ${PIPESTATUS[1]}
+
+         - name: TOM TAT LOI (copy phan nay gui lai)
+           if: failure()
+           run: |
+             echo "=========== CAC DONG CO CHU ERROR ==========="
+             grep -n -iE "error:|error |failed|exception|traceback|No such file|not found" build.log \
+               | grep -v -- "-Werror" | tail -40 || true
+             echo "=========== 60 DONG CUOI ==========="
+             tail -60 build.log | cut -c1-400
+
+         - name: Tai log day du
+           if: failure()
+           uses: actions/upload-artifact@v4
+           with:
+             name: build-log
+             path: build.log
 
       - name: Tải APK lên
         uses: actions/upload-artifact@v4
