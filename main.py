@@ -28,7 +28,8 @@ LANG = {
     "en": {"name": "English", "tag": "en-US", "other": "vi"},
     "vi": {"name": "Tiếng Việt", "tag": "vi-VN", "other": "en"},
 }
-PARTIAL_INTERVAL = 0.45  # giây giữa hai lần dịch tạm khi đang nói
+PARTIAL_INTERVAL = 1.2   # giây giữa hai lần dịch tạm khi đang nói
+PARTIAL_MIN_DIFF = 6     # chỉ dịch tạm khi câu dài thêm ít nhất ngần này ký tự
 QUIET_ERRORS = (6, 7)     # không nghe thấy / không nhận ra -> nghe lại im lặng
 
 KV = """
@@ -181,15 +182,20 @@ KV = """
         height: dp(36)
         spacing: dp(6)
         ToggleButton:
-            text: 'Nghe liên tục: ' + ('BẬT' if app.continuous else 'TẮT')
+            text: 'Liên tục: ' + ('BẬT' if app.continuous else 'TẮT')
             state: 'down' if app.continuous else 'normal'
             on_release: app.set_continuous(self.state == 'down')
-            font_size: '14sp'
+            font_size: '13sp'
         ToggleButton:
-            text: 'Đọc bản dịch: ' + ('BẬT' if app.speak_enabled else 'TẮT')
+            text: 'Đọc: ' + ('BẬT' if app.speak_enabled else 'TẮT')
             state: 'down' if app.speak_enabled else 'normal'
             on_release: app.set_speak(self.state == 'down')
-            font_size: '14sp'
+            font_size: '13sp'
+        ToggleButton:
+            text: 'Dịch khi nói: ' + ('BẬT' if app.live_partial else 'TẮT')
+            state: 'down' if app.live_partial else 'normal'
+            on_release: app.set_live_partial(self.state == 'down')
+            font_size: '13sp'
 
     # ---- Hai nút nói ----
     BoxLayout:
@@ -230,6 +236,7 @@ class TranslatorApp(App):
     listening_lang = StringProperty("")   # '' | 'en' | 'vi'  (phiên đang bật)
     continuous = BooleanProperty(True)
     speak_enabled = BooleanProperty(True)
+    live_partial = BooleanProperty(True)
     text_src = StringProperty("en")
 
     def build(self):
@@ -240,12 +247,14 @@ class TranslatorApp(App):
         cfg = self.store.get("cfg") if self.store.exists("cfg") else {}
         self.continuous = cfg.get("continuous", True)
         self.speak_enabled = cfg.get("speak", True)
-        self.translator = Translator(cfg.get("api_key", ""))
+        self.live_partial = cfg.get("live_partial", True)
+        self.translator = Translator(cfg.get("api_key", ""), cfg.get("email", ""))
 
         self._req_id = 0            # để bỏ kết quả dịch cũ
         self._partial_busy = False
         self._partial_pending = None
         self._last_partial = 0.0
+        self._last_partial_text = ""
         self._text_ev = None
 
         self.stt = SpeechInput(
@@ -276,10 +285,15 @@ class TranslatorApp(App):
     # ------------------------------------------------------------ cài đặt
     def _save(self):
         self.store.put("cfg", continuous=self.continuous, speak=self.speak_enabled,
-                       api_key=self.translator.api_key)
+                       live_partial=self.live_partial,
+                       api_key=self.translator.api_key, email=self.translator.email)
 
     def set_continuous(self, v):
         self.continuous = v
+        self._save()
+
+    def set_live_partial(self, v):
+        self.live_partial = v
         self._save()
 
     def set_speak(self, v):
@@ -296,12 +310,18 @@ class TranslatorApp(App):
         ti = TextInput(text=self.translator.api_key, multiline=False,
                        password=True, size_hint_y=None, height=dp(44))
         box.add_widget(ti)
+        box.add_widget(Label(
+            text="Email cho MyMemory (không bắt buộc, tăng hạn mức)",
+            size_hint_y=None, height=dp(28), font_size="13sp"))
+        te = TextInput(text=self.translator.email, multiline=False,
+                       size_hint_y=None, height=dp(44))
+        box.add_widget(te)
         row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-        pop = Popup(title="Cài đặt", content=box, size_hint=(0.92, None),
-                    height=dp(230))
+        pop = Popup(title="Cài đặt", content=box, size_hint=(0.95, None),
+                    height=dp(330))
 
         def save(*_):
-            self.translator = Translator(ti.text)
+            self.translator = Translator(ti.text, te.text)
             self._save()
             mode = "Google Cloud API" if self.translator.api_key else "Google miễn phí"
             self.status = f"Đã lưu - dịch bằng {mode}"
@@ -309,7 +329,7 @@ class TranslatorApp(App):
 
         def check(btn):
             btn.text = "Đang kiểm tra..."
-            t = Translator(ti.text)
+            t = Translator(ti.text, te.text)
 
             def work():
                 report = t.diagnose()
@@ -339,6 +359,7 @@ class TranslatorApp(App):
         self.listening_lang = lang
         self.live_src = ""
         self.live_dst = ""
+        self._last_partial_text = ""
         self._start(lang)
 
     def stop_listening(self):
@@ -370,6 +391,10 @@ class TranslatorApp(App):
         if not self.listening_lang:
             return
         self.live_src = text
+        if not self.live_partial:
+            return
+        if abs(len(text) - len(self._last_partial_text)) < PARTIAL_MIN_DIFF:
+            return
         self._partial_pending = text
         self._pump_partial()
 
@@ -383,6 +408,7 @@ class TranslatorApp(App):
             Clock.schedule_once(lambda dt: self._pump_partial(), wait)
             return
         text, self._partial_pending = self._partial_pending, None
+        self._last_partial_text = text
         src = self.listening_lang
         self._partial_busy = True
         self._last_partial = time.time()
@@ -458,7 +484,8 @@ class TranslatorApp(App):
         else:
             self.live_dst = out
             self.add_history(text, out, src)
-            self.status = "Đang nghe..." if self.listening_lang else "Xong"
+            src_name = self.translator.last_source
+            self.status = ("Đang nghe..." if self.listening_lang else "Xong") + f" ({src_name})"
             spoke = self.speak_enabled and self.tts.speak(out, dst)
             if self.speak_enabled and not spoke and IS_ANDROID:
                 self.status = f"Chưa có giọng đọc {LANG[dst]['name']} (xem hướng dẫn)"
